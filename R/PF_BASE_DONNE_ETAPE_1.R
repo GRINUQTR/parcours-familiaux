@@ -99,9 +99,6 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
   ) %>%
   ungroup()
 
-
-
-
 # Importer et merger les données sociodémographique
 
 
