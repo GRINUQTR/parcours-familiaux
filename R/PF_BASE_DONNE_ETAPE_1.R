@@ -5,13 +5,20 @@ library(readxl)
 
 # Importation des données
 df_smonkey_t1 <- read_sav("raw_data/questionnaires_temps_1_20250128.sav")
+df_smonkey_t2 <- read_sav("raw_data/questionnaires_temps_2_20250408.sav")
 
 # Fonction de renommage en lot
 rename_by_prefix <- function(data, prefix, new_prefix) {
   rename_with(data, ~str_replace(.x, paste0("^", prefix), new_prefix), starts_with(prefix))
 }
 
-# Renommage des variables
+# Fonction d'inversion
+reverse_items <- function(df, items, max_score, prefix = "reversed_") {
+  df %>%
+    mutate(across(all_of(items), ~ max_score + 1 - ., .names = paste0(prefix, "{.col}")))
+}
+
+# Renommage des variables t1
 df_smonkey_t1 <- df_smonkey_t1 %>%
   rename(id = q0005, vague = q0006) %>%
   rename_by_prefix("q0007", "ees") %>%
@@ -42,12 +49,6 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
     conso_12mois_alcool = q0052_0001, conso_12mois_cannabis = q0052_0002,
     conso_12mois_autre = q0052_0003
   )
-
-# Fonction d'inversion
-reverse_items <- function(df, items, max_score, prefix = "reversed_") {
-  df %>%
-    mutate(across(all_of(items), ~ max_score + 1 - ., .names = paste0(prefix, "{.col}")))
-}
 
 # Inverser les items ISP et calculer le score
 df_smonkey_t1 <- df_smonkey_t1 %>%
@@ -98,6 +99,109 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
     gf6_score = mean(c_across(starts_with("gf6")))
   ) %>%
   ungroup()
+
+# Base de données des scores
+
+df_smonkey_t1_score <- df_smonkey_t1 %>%
+  select(id, vague, k6_score, eqcc_score, gf6_score, webwbs_score_raw, webwbs_metric_score, chaos_score, isp_score)
+
+# Renommage des variables T2
+
+df_smonkey_t2 <- df_smonkey_t2 %>%
+  rename(id = q0001, vague = q0002, isp_0012 = q0006) %>%
+  rename_by_prefix("q0003", "k6") %>%
+  rename_by_prefix("q0004", "temp") %>%
+  rename_by_prefix("q0005", "isp") %>%
+  rename_by_prefix("q0007", "tas") %>%
+  rename_by_prefix("q0008", "ecc") %>%
+  rename_by_prefix("q0009", "ctq") %>%
+  rename_by_prefix("q0010", "pce") %>%
+  rename_by_prefix("q0037", "satisfaction")
+
+# Score K6, ECC et PCE
+# Vérifier si il y a des 7 dans PCE
+
+df_has_7 <- df_smonkey_t2 %>%
+  filter(if_any(starts_with("pce_"), ~ .x == 7)) %>%
+  select(id, starts_with("pce_"))
+
+df_smonkey_t2 <- df_smonkey_t2 %>%
+  rowwise() %>%
+  mutate(
+    k6_score = sum(c_across(starts_with("k6_"))),
+    ecc_score = sum(c_across(starts_with("ecc_"))),
+    pce_score = sum(c_across(starts_with("pce_")))
+  ) %>%
+  ungroup()
+
+# Score pour les facteurs de tempérament
+
+df_smonkey_t2 <- df_smonkey_t2 %>%
+  reverse_items(c("temp_0001", "temp_0002", "temp_0003", "temp_0004",
+                  "temp_0007", "temp_0010", "temp_0013", "temp_0019"), 7) %>%
+  rowwise() %>%
+  mutate(temp_ac_score = sum(reversed_temp_0001, reversed_temp_0002, temp_0005, temp_0009,
+                             temp_0014, temp_0015, reversed_temp_0019) / 7,
+         temp_sad_score = sum(reversed_temp_0003, reversed_temp_0007, temp_0008, temp_0012,
+                              temp_0016, temp_0017, reversed_temp_0010) / 7,
+         temp_soc_score = sum(reversed_temp_0004, reversed_temp_0013, temp_0006, temp_0011,
+                              temp_0018) / 5) %>%
+  ungroup()
+
+# Inverser les items ISP et calculer le score
+df_smonkey_t2 <- df_smonkey_t2 %>%
+  reverse_items(c("isp_0001", "isp_0002", "isp_0003", "isp_0004", "isp_0005",
+                  "isp_0006", "isp_0007", "isp_0008", "isp_0009", "isp_0010", "isp_0011"), 5) %>%
+  rowwise() %>%
+  mutate(isp_score = sum(c_across(starts_with("reversed_isp")), isp_0012)) %>%
+  ungroup()
+
+# Score pour les facteurs de tempérament
+
+df_smonkey_t2 <- df_smonkey_t2 %>%
+  reverse_items(c("tas_0004", "tas_0005", "tas_0010", "tas_0018", "tas_0019"), 5) %>%
+  rowwise() %>%
+  mutate(tas_dif_score = sum(tas_0001, tas_0003, tas_0006, tas_0007,
+                             tas_0009, tas_0013, tas_0014),
+         tas_ddf_score = sum(reversed_tas_0004, tas_0002, tas_0011, tas_0012,
+                              tas_0017),
+         tas_eot_score = sum(reversed_tas_0005, reversed_tas_0010, reversed_tas_0018,
+                              reversed_tas_0019, tas_0008, tas_0015, tas_0016, tas_0020),
+         tas_total_score = sum(tas_0001, tas_0003, tas_0006, tas_0007,
+                                tas_0009, tas_0013, tas_0014, reversed_tas_0004, tas_0002, tas_0011, tas_0012,
+                                tas_0017, reversed_tas_0005, reversed_tas_0010, reversed_tas_0018,
+                                reversed_tas_0019, tas_0008, tas_0015, tas_0016, tas_0020)) %>%
+  ungroup()
+
+# Score pour les facteurs de CTQ
+
+df_smonkey_t2 <- df_smonkey_t2 %>%
+  reverse_items(c("ctq_0002", "ctq_0005", "ctq_0007",
+                  "ctq_0013", "ctq_0019", "ctq_0026", "ctq_0028"), 5) %>%
+  rowwise() %>%
+  mutate(
+    ctq_emotional_abuse = sum(ctq_0003, ctq_0008, ctq_0014, ctq_0018, ctq_0025),
+    ctq_physical_abuse  = sum(ctq_0009, ctq_0011, ctq_0012, ctq_0015, ctq_0017),
+    ctq_sexual_abuse    = sum(ctq_0020, ctq_0021, ctq_0023, ctq_0024, ctq_0027),
+    ctq_emotional_neglect = sum(reversed_ctq_0005, reversed_ctq_0007,
+                                reversed_ctq_0013, reversed_ctq_0019, reversed_ctq_0028),
+    ctq_physical_neglect = sum(ctq_0001, reversed_ctq_0002, ctq_0004,
+                               ctq_0006, reversed_ctq_0026),
+    ctq_total_score = sum(ctq_emotional_abuse, ctq_physical_abuse, ctq_sexual_abuse,
+                          ctq_emotional_neglect, ctq_physical_neglect)
+  ) %>%
+  ungroup()
+
+# Créer un df avec les scores
+
+df_smonkey_t2_score <- df_smonkey_t2 %>%
+  select(id, vague, k6_score, ecc_score, pce_score, isp_score, ctq_emotional_abuse, ctq_physical_abuse, ctq_sexual_abuse,
+         ctq_emotional_neglect, ctq_physical_neglect, ctq_total_score, tas_dif_score, tas_ddf_score, tas_eot_score,
+         tas_total_score, temp_ac_score, temp_sad_score,temp_soc_score)
+
+# Merge des bases de données avec score
+
+df_smonkey_t1_t2_score <- bind_rows(df_smonkey_t1_score, df_smonkey_t2_score)
 
 # Importer et merger les données sociodémographique
 
