@@ -18,7 +18,9 @@ reverse_items <- function(df, items, max_score, prefix = "reversed_") {
     mutate(across(all_of(items), ~ max_score + 1 - ., .names = paste0(prefix, "{.col}")))
 }
 
-# Renommage des variables t1
+# Nettoyage de la base de données T1
+
+# Renommage des variables t1 / selection des variables
 df_smonkey_t1 <- df_smonkey_t1 %>%
   rename(id = q0005, vague = q0006) %>%
   rename_by_prefix("q0007", "ees") %>%
@@ -47,15 +49,51 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
     conso_grossesse_tabac = q0051_0001, conso_grossesse_alcool = q0051_0002,
     conso_grossesse_cannabis = q0051_0003, conso_grossesse_autre = q0051_0004,
     conso_12mois_alcool = q0052_0001, conso_12mois_cannabis = q0052_0002,
-    conso_12mois_autre = q0052_0003
-  )
+    conso_12mois_autre = q0052_0003, date = StartDate) %>%
+  mutate(date = mdy_hms(date)) %>%
+  mutate(date = as_date(date)) %>%
+  select(
+    date, id, vague, isp_0012_B,
+    starts_with("ees_"), starts_with("webwbs_"), starts_with("k6_"), starts_with("isp_"),
+    starts_with("eqcc_"), starts_with("chaos_"), starts_with("gf6_"), starts_with("satisfaction_"),
+    starts_with("sommeil_"), starts_with("besoin_"), starts_with("soutien_"), starts_with("conso_"))
 
-# Inverser les items ISP et calculer le score
+# Gestion des données manquantes
+# Remplace les -9 par des NA
+df_smonkey_t1 <- df_smonkey_t1 %>%
+  mutate(across(where(is.numeric), ~na_if(., -9)))
+
+# DF des données manquantes
+df_smonkey_t1_na <- tibble(
+  column = names(df_smonkey_t1),
+  n_na = colSums(is.na(df_smonkey_t1)))
+
+# Imputation sur la moyenne pour EES (3 participants avec un items NA)
+
+rosenberg_items <- paste0("ees_00", sprintf("%02d", 1:10))
+
+df_smonkey_t1 <- df_smonkey_t1 %>%
+  rowwise() %>%
+  mutate(
+    across(all_of(rosenberg_items), ~ ifelse(is.na(.),
+                                             round(mean(c_across(all_of(rosenberg_items)), na.rm = TRUE)),
+                                             .))) %>%
+  ungroup()
+
+# Imputatation sur la moyenne pour Isop_007 (3 données manquantes) et isp_0012 (Questions manquantes pour F001 à F012)
+# Inversion des questions / Imputation isp_007 / imputation isp_0012_b
 df_smonkey_t1 <- df_smonkey_t1 %>%
   reverse_items(c("isp_0001", "isp_0002", "isp_0003", "isp_0004", "isp_0005",
                   "isp_0006", "isp_0007", "isp_0008", "isp_0009", "isp_0015", "isp_0016"), 5) %>%
   rowwise() %>%
-  mutate(isp_score = sum(c_across(starts_with("reversed_isp")))) %>%
+  mutate(reversed_isp_0007 = ifelse(
+    is.na(reversed_isp_0007),
+    round(mean(c_across(c("reversed_isp_0001", "reversed_isp_0002", "reversed_isp_0003",
+                          "reversed_isp_0004", "reversed_isp_0005", "reversed_isp_0006",
+                          "reversed_isp_0008", "reversed_isp_0009",
+                          "reversed_isp_0015", "reversed_isp_0016")), na.rm = TRUE)), reversed_isp_0007),
+    isp_0012_B = ifelse(is.na(isp_0012_B),
+                             round(mean(c_across(starts_with("reversed_isp")), na.rm = TRUE)), isp_0012_B)) %>%
   ungroup()
 
 # Inverser CHAOS et calculer le score
@@ -70,8 +108,10 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
 df_smonkey_t1 <- df_smonkey_t1 %>%
   reverse_items(c("ees_0003", "ees_0005", "ees_0008", "ees_0009", "ees_0010"), 4) %>%
   rowwise() %>%
-  mutate(ees_score = sum(c_across(all_of(c("ees_0001", "ees_0002", "ees_0004", "ees_0006", "ees_0007")),
-                                  c_across(starts_with("reversed_ees"))))) %>%
+  mutate(
+    ees_score = sum(c_across(all_of(c("ees_0001", "ees_0002", "ees_0004", "ees_0006", "ees_0007",
+                                      "reversed_ees_0003", "reversed_ees_0005", "reversed_ees_0008",
+                                      "reversed_ees_0009", "reversed_ees_0010"))))) %>%
   ungroup()
 
 # Conversion WEMWBS
@@ -90,20 +130,94 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
   left_join(conversion_table, by = c("webwbs_score_raw" = "Raw_Score")) %>%
   rename(webwbs_metric_score = Metric_Score)
 
-# Autres scores
+# Score K6, EQCC, GF6 et ISP
 df_smonkey_t1 <- df_smonkey_t1 %>%
   rowwise() %>%
   mutate(
-    k6_score = sum(c_across(starts_with("k6_"))),
-    eqcc_score = sum(c_across(starts_with("eqcc"))),
-    gf6_score = mean(c_across(starts_with("gf6")))
-  ) %>%
+    k6_score = sum(c_across(starts_with("k6_")), na.rm = TRUE),
+    eqcc_score = sum(c_across(starts_with("eqcc")), na.rm = TRUE),
+    gf6_score = mean(c_across(starts_with("gf6")), na.rm = TRUE),
+    isp_score = sum(c(c_across(starts_with("reversed_isp")), isp_0012_B), na.rm = TRUE)) %>%
   ungroup()
+
 
 # Base de données des scores
 
 df_smonkey_t1_score <- df_smonkey_t1 %>%
-  select(id, vague, k6_score, eqcc_score, gf6_score, webwbs_score_raw, webwbs_metric_score, chaos_score, isp_score)
+  select(date, id, vague, k6_score, eqcc_score, gf6_score, ees_score, webwbs_score_raw, webwbs_metric_score, chaos_score, isp_score)
+
+# Vérifier des données abérrantes
+
+vars <- c("k6_score", "eqcc_score", "gf6_score", "ees_score",
+          "webwbs_score_raw", "webwbs_metric_score", "chaos_score", "isp_score")
+
+df_outliers_t1 <- df_smonkey_t1_score
+
+# Créer une liste vide pour mettre les informations en format long
+outlier_list <- list()
+
+# Appliquer en boucle à chaque variables
+for (var in vars) {
+
+  # Définir les IQR
+  Q1 <- quantile(df_outliers_t1[[var]], 0.25, na.rm = TRUE)
+  Q3 <- quantile(df_outliers_t1[[var]], 0.75, na.rm = TRUE)
+  IQR_val <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR_val
+  upper_bound <- Q3 + 1.5 * IQR_val
+
+  # Définior le Z-score
+  mean_val <- mean(df_outliers_t1[[var]], na.rm = TRUE)
+  sd_val <- sd(df_outliers_t1[[var]], na.rm = TRUE)
+
+  # Définir les limites
+  df_outliers_t1 <- df_outliers_t1 %>%
+    mutate(
+      "{var}_zscore" := (.data[[var]] - mean_val) / sd_val,
+      "{var}_outlier_iqr" := .data[[var]] < lower_bound | .data[[var]] > upper_bound,
+      "{var}_outlier_z" := abs(.data[[paste0(var, "_zscore")]]) > 3
+    )
+
+  # calcul IQR
+  df_outliers_t1 <- df_outliers_t1 %>%
+    mutate(
+      "{var}_iqr_score" := case_when(
+        .data[[var]] < Q1 ~ (Q1 - .data[[var]]) / IQR_val,
+        .data[[var]] > Q3 ~ (.data[[var]] - Q3) / IQR_val,
+        TRUE ~ 0
+      )
+    )
+
+  # IQR Données abérrantes
+  outlier_iqr <- df_outliers_t1 %>%
+    filter(.data[[paste0(var, "_outlier_iqr")]]) %>%
+    select(
+      id,
+      value = all_of(var),
+      iqr_score = all_of(paste0(var, "_iqr_score")),
+      zscore = all_of(paste0(var, "_zscore"))
+    ) %>%
+    mutate(variable = var, method = "IQR")
+
+  # Z-score Données abérrantes
+  outlier_z <- df_outliers_t1 %>%
+    filter(.data[[paste0(var, "_outlier_z")]]) %>%
+    select(
+      id,
+      value = all_of(var),
+      iqr_score = all_of(paste0(var, "_iqr_score")),
+      zscore = all_of(paste0(var, "_zscore"))
+    ) %>%
+    mutate(variable = var, method = "Z-score")
+
+  # Combiner les données
+  outlier_list[[var]] <- bind_rows(outlier_iqr, outlier_z)
+}
+
+# Combiner dans un dataframe
+outlier_summary <- bind_rows(outlier_list)
+
+
 
 # Renommage des variables T2
 
@@ -117,6 +231,16 @@ df_smonkey_t2 <- df_smonkey_t2 %>%
   rename_by_prefix("q0009", "ctq") %>%
   rename_by_prefix("q0010", "pce") %>%
   rename_by_prefix("q0037", "satisfaction")
+
+# Gestion des données manquantes
+# Remplace les -9 par des NA
+df_smonkey_t2 <- df_smonkey_t2 %>%
+  mutate(across(where(is.numeric), ~na_if(., -9)))
+
+# DF des données manquantes
+df_smonkey_t1_na <- tibble(
+  column = names(df_smonkey_t1),
+  n_na = colSums(is.na(df_smonkey_t1)))
 
 # Score K6, ECC et PCE
 # Vérifier si il y a des 7 dans PCE
