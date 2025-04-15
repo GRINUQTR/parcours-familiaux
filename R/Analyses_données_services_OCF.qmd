@@ -1,0 +1,122 @@
+---
+title: "Rapport descriptif des besoins et services"
+format: html
+editor: visual
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(kableExtra)
+``` 
+
+## Lecture des bases de données
+
+```{r}
+df_smonkey_t1 <- read_excel("data/df_smonkey_t1.xlsx") %>%
+  mutate(id = if_else(id == "F021", "F021_JSV", id)) %>%
+  filter(vague == 1)
+
+df_socio <- read_excel("raw_data/PF_base_de_donnees_sociodémographique_T1_20250319.xlsx", sheet = "Questionnaire_sociodémographiqu") %>%
+  filter(vague == 1)
+
+df_smonkey_t1_socio <- left_join(df_socio, df_smonkey_t1, by = "id")
+```
+
+## Nettoyage et transformation des données
+
+```{r}
+df_smonkey_t1_socio_service <- df_smonkey_t1_socio %>%
+  filter(!grepl("_E$", id)) %>%
+  filter(!id %in% c("F021_MG", "F006_PLT")) %>%
+  rowwise() %>%
+  mutate(satisfaction_score = sum(c_across(starts_with("satisfaction_")), na.rm = TRUE)) %>%
+  ungroup() %>%
+  select(id, genre, modalite_garde, diplome_titre, occupation, revenu_familial, starts_with("besoin_"), ends_with("_score"))
+```
+
+## Description de l'échantillon
+
+### Genre
+
+```{r}
+resume_genre <- df_smonkey_t1_socio_service %>%
+  count(genre) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+resume_genre %>%
+  kbl(caption = "Répartition par genre") %>%
+  kable_styling()
+```
+
+### Diplôme
+
+```{r}
+resume_diplome <- df_smonkey_t1_socio_service %>%
+  count(diplome_titre) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+resume_diplome %>%
+  kbl(caption = "Répartition selon le niveau de diplôme") %>%
+  kable_styling()
+```
+
+### Occupation par genre
+
+```{r}
+resume_occupation <- df_smonkey_t1_socio_service %>%
+  count(genre, occupation) %>%
+  group_by(genre) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1)) %>%
+  ungroup()
+
+resume_occupation %>%
+  kbl(caption = "Occupation selon le genre") %>%
+  kable_styling()
+```
+
+## Variables au niveau familial
+
+```{r}
+df_famille_unique <- df_smonkey_t1_socio_service %>%
+  mutate(id_famille = substr(id, 1, 4)) %>%
+  group_by(id_famille) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(id_famille, modalite_garde, revenu_familial)
+
+resume_modalite_garde <- df_famille_unique %>%
+  count(modalite_garde) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+resume_modalite_garde %>%
+  kbl(caption = "Modalité de garde (niveau familial)") %>%
+  kable_styling()
+
+resume_revenu_familial <- df_famille_unique %>%
+  count(revenu_familial) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+resume_revenu_familial %>%
+  kbl(caption = "Revenu familial (niveau familial)") %>%
+  kable_styling()
+```
+
+## Score de satisfaction global
+
+```{r}
+df_smonkey_t1_socio_service_clean <- df_smonkey_t1_socio_service %>%
+  filter(satisfaction_score > 0)
+
+df_smonkey_t1_socio_service_clean %>%
+  summarise(
+    min = min(satisfaction_score, na.rm = TRUE),
+    max = max(satisfaction_score, na.rm = TRUE),
+    mean = mean(satisfaction_score, na.rm = TRUE),
+    median = median(satisfaction_score, na.rm = TRUE),
+    sd = sd(satisfaction_score, na.rm = TRUE),
+    n = n()
+  ) %>%
+  kbl(caption = "Statistiques descriptives du score de satisfaction") %>%
+  kable_styling()

@@ -217,8 +217,6 @@ for (var in vars) {
 # Combiner dans un dataframe
 outlier_summary <- bind_rows(outlier_list)
 
-
-
 # Renommage des variables T2
 
 df_smonkey_t2 <- df_smonkey_t2 %>%
@@ -322,6 +320,78 @@ df_smonkey_t2_score <- df_smonkey_t2 %>%
   select(id, vague, k6_score, ecc_score, pce_score, isp_score, ctq_emotional_abuse, ctq_physical_abuse, ctq_sexual_abuse,
          ctq_emotional_neglect, ctq_physical_neglect, ctq_total_score, tas_dif_score, tas_ddf_score, tas_eot_score,
          tas_total_score, temp_ac_score, temp_sad_score,temp_soc_score)
+
+# Vérifier les données abérrantes
+
+vars <- c("k6_score", "ecc_score", "pce_score", "isp_score", "ctq_emotional_abuse", "ctq_physical_abuse", "ctq_sexual_abuse",
+          "ctq_emotional_neglect", "ctq_physical_neglect", "ctq_total_score", "tas_dif_score", "tas_ddf_score", "tas_eot_score",
+          "tas_total_score", "temp_ac_score", "temp_sad_score", "temp_soc_score")
+
+df_outliers_t2 <- df_smonkey_t2_score
+
+# Créer une liste vide pour mettre les informations en format long
+outlier_list <- list()
+
+# Appliquer en boucle à chaque variables
+for (var in vars) {
+
+  # Définir les IQR
+  Q1 <- quantile(df_outliers_t2[[var]], 0.25, na.rm = TRUE)
+  Q3 <- quantile(df_outliers_t2[[var]], 0.75, na.rm = TRUE)
+  IQR_val <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR_val
+  upper_bound <- Q3 + 1.5 * IQR_val
+
+  # Définior le Z-score
+  mean_val <- mean(df_outliers_t2[[var]], na.rm = TRUE)
+  sd_val <- sd(df_outliers_t2[[var]], na.rm = TRUE)
+
+  # Définir les limites
+  df_outliers_t2 <- df_outliers_t2 %>%
+    mutate(
+      "{var}_zscore" := (.data[[var]] - mean_val) / sd_val,
+      "{var}_outlier_iqr" := .data[[var]] < lower_bound | .data[[var]] > upper_bound,
+      "{var}_outlier_z" := abs(.data[[paste0(var, "_zscore")]]) > 3
+    )
+
+  # calcul IQR
+  df_outliers_t2 <- df_outliers_t2 %>%
+    mutate(
+      "{var}_iqr_score" := case_when(
+        .data[[var]] < Q1 ~ (Q1 - .data[[var]]) / IQR_val,
+        .data[[var]] > Q3 ~ (.data[[var]] - Q3) / IQR_val,
+        TRUE ~ 0
+      )
+    )
+
+  # IQR Données abérrantes
+  outlier_iqr <- df_outliers_t2 %>%
+    filter(.data[[paste0(var, "_outlier_iqr")]]) %>%
+    select(
+      id,
+      value = all_of(var),
+      iqr_score = all_of(paste0(var, "_iqr_score")),
+      zscore = all_of(paste0(var, "_zscore"))
+    ) %>%
+    mutate(variable = var, method = "IQR")
+
+  # Z-score Données abérrantes
+  outlier_z <- df_outliers_t2 %>%
+    filter(.data[[paste0(var, "_outlier_z")]]) %>%
+    select(
+      id,
+      value = all_of(var),
+      iqr_score = all_of(paste0(var, "_iqr_score")),
+      zscore = all_of(paste0(var, "_zscore"))
+    ) %>%
+    mutate(variable = var, method = "Z-score")
+
+  # Combiner les données
+  outlier_list[[var]] <- bind_rows(outlier_iqr, outlier_z)
+}
+
+# Combiner dans un dataframe
+outlier_summary_t2 <- bind_rows(outlier_list)
 
 # Merge des bases de données avec score
 
