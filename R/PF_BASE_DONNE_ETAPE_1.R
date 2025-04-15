@@ -2,6 +2,7 @@ library(tidyverse)
 library(writexl)
 library(haven)
 library(readxl)
+library(writexl)
 
 # Importation des données
 df_smonkey_t1 <- read_sav("raw_data/questionnaires_temps_1_20250128.sav")
@@ -35,11 +36,25 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
     isp_0012_B = q0011,
     sommeil_1 = q0012, sommeil_2 = q0013, sommeil_3 = q0014, sommeil_4 = q0015,
     sommeil_5 = q0016_0001, sommeil_6 = q0017, sommeil_7 = q0018,
-    besoin_1 = q0019_0001, besoin_1_1 = q0020_0001, besoin_1_2 = q0021_0001,
-    besoin_2 = q0022_0001, besoin_2_1 = q0023_0001, besoin_2_2 = q0024_0001,
-    besoin_3 = q0025_0001, besoin_3_1 = q0026_0001, besoin_3_2 = q0027_0001,
-    besoin_4 = q0028_0001, besoin_4_1 = q0029_0001, besoin_4_2 = q0030_0001,
-    besoin_5 = q0031_0001, besoin_5_1 = q0032_0001, besoin_5_2 = q0033_0001,
+    besoin_finance = q0019_0001,
+    besoin_finance_satisfaction = q0020_0001,
+    besoin_finance_ocf = q0021_0001,
+
+    besoin_soins = q0022_0001,
+    besoin_soins_satisfaction = q0023_0001,
+    besoin_soins_ocf = q0024_0001,
+
+    besoin_repit= q0025_0001,
+    besoin_repit_satisfaction = q0026_0001,
+    besoin_repit_ocf = q0027_0001,
+
+    besoin_domestique = q0028_0001,
+    besoin_domestique_satisfaction = q0029_0001,
+    besoin_domestique_ocf = q0030_0001,
+
+    besoin_emotion = q0031_0001,
+    besoin_emotion_satisfaction = q0032_0001,
+    besoin_emotion_ocf = q0033_0001,
     soutien_1 = q0038_0001, soutien_1_1 = q0039_0001,
     soutien_2 = q0040_0001, soutien_2_1 = q0041_0001,
     soutien_3 = q0042_0001, soutien_3_1 = q0043_0001,
@@ -145,6 +160,9 @@ df_smonkey_t1 <- df_smonkey_t1 %>%
 
 df_smonkey_t1_score <- df_smonkey_t1 %>%
   select(date, id, vague, k6_score, eqcc_score, gf6_score, ees_score, webwbs_score_raw, webwbs_metric_score, chaos_score, isp_score)
+
+write_xlsx(df_smonkey_t1_score, "C:/Users/planteb/MesProjets/parcours-familiaux/data/df_smonkey_t1_score.xlsx")
+write_xlsx(df_smonkey_t1, "C:/Users/planteb/MesProjets/parcours-familiaux/data/df_smonkey_t1.xlsx")
 
 # Vérifier des données abérrantes
 
@@ -397,13 +415,16 @@ outlier_summary_t2 <- bind_rows(outlier_list)
 
 df_smonkey_t1_t2_score <- bind_rows(df_smonkey_t1_score, df_smonkey_t2_score)
 
+
 # Importer et merger les données sociodémographique
 
-
-df_socio <- read_excel("raw_data/PF_base_de_donnees_sociodémographique_T1_20250225.xlsx", sheet = "Questionnaire_sociodémographiqu") %>%
+df_socio <- read_excel("raw_data/PF_base_de_donnees_sociodémographique_T1_20250319.xlsx", sheet = "Questionnaire_sociodémographiqu") %>%
   filter(vague == 1)
 
-df_general <- left_join(df_socio, df_smonkey, by = "id")
+df_service <- read_excel("raw_data/PF_base_de_donnees_sociodémographique_T1_20250225.xlsx", sheet = "Question services") %>%
+  filter(vague == 1)
+
+df_smonkey_t1_socio <- left_join(df_socio, df_smonkey_t1_score, by = "id")
 
 write_xlsx(df_general, "data_base/PF_base_de_donnees_T1.xlsx")
 

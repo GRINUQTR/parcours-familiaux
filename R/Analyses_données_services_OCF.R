@@ -18,7 +18,115 @@ df_smonkey_t1_socio_service <- df_smonkey_t1_socio %>%
   rowwise() %>%
   mutate(satisfaction_score = sum(c_across(starts_with("satisfaction_")), na.rm = TRUE)) %>%
   ungroup() %>%
-  select(id, starts_with("besoin_"), ends_with("_score"))
+  select(id, genre, modalite_garde, diplome_titre, occupation, revenu_familial, starts_with("besoin_"), ends_with("_score"))
+
+#Description de l'échantillon
+# Résumés statistiques pour genre, diplôme et occupation
+resume_genre <- df_smonkey_t1_socio_service %>%
+  count(genre) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+resume_diplome <- df_smonkey_t1_socio_service %>%
+  count(diplome_titre) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+resume_occupation <- df_smonkey_t1_socio_service %>%
+  count(genre, occupation) %>%
+  group_by(genre) %>%
+  mutate(
+    pourcentage = round(100 * n / sum(n), 1)
+  ) %>%
+  ungroup()
+
+# Visualisation : Genre
+plot_genre <- df_smonkey_t1_socio_service %>%
+  count(genre) %>%
+  ggplot(aes(x = genre, y = n, fill = genre)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = n), vjust = -0.5) +
+  labs(title = "Répartition par genre", x = "Genre", y = "Nombre") +
+  theme_minimal()
+
+# Visualisation : Diplôme
+plot_diplome <- df_smonkey_t1_socio_service %>%
+  count(diplome_titre) %>%
+  ggplot(aes(x = reorder(diplome_titre, -n), y = n, fill = diplome_titre)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = n), vjust = -0.5) +
+  labs(title = "Répartition selon le niveau de diplôme", x = "Diplôme", y = "Nombre") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+
+# Visualisation : Occupation
+plot_occupation <- df_smonkey_t1_socio_service %>%
+  count(occupation) %>%
+  ggplot(aes(x = reorder(occupation, -n), y = n, fill = occupation)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = n), vjust = -0.5) +
+  labs(title = "Répartition selon l’occupation", x = "Occupation", y = "Nombre") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+
+# Affichage des tableaux en console (si nécessaire)
+resume_genre
+resume_diplome
+resume_occupation
+
+# Affichage des graphiques (dans l’ordre)
+plot_genre
+plot_diplome
+plot_occupation
+
+# Résumés statistiques pour modalite_garde et revenu_familial au niveau des familles
+df_famille_unique <- df_smonkey_t1_socio_service %>%
+  mutate(id_famille = substr(id, 1, 4)) %>%
+  group_by(id_famille) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(id_famille, modalite_garde, revenu_familial)
+
+# Étape 2 : résumé statistique - modalité de garde
+resume_modalite_garde <- df_famille_unique %>%
+  count(modalite_garde) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+# Étape 3 : résumé statistique - revenu familial
+resume_revenu_familial <- df_famille_unique %>%
+  count(revenu_familial) %>%
+  mutate(pourcentage = round(100 * n / sum(n), 1))
+
+# Étape 4 : visualisation - modalité de garde
+plot_modalite_garde <- ggplot(resume_modalite_garde, aes(x = reorder(modalite_garde, -n), y = n, fill = modalite_garde)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = paste0(n, " (", pourcentage, "%)")), vjust = -0.5) +
+  labs(
+    title = "Répartition des familles selon la modalité de garde",
+    x = "Modalité de garde",
+    y = "Nombre de familles"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+
+# Étape 5 : visualisation - revenu familial
+plot_revenu_familial <- ggplot(resume_revenu_familial, aes(x = reorder(revenu_familial, -n), y = n, fill = revenu_familial)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = paste0(n, " (", pourcentage, "%)")), vjust = -0.5) +
+  labs(
+    title = "Répartition des familles selon le revenu familial",
+    x = "Revenu familial",
+    y = "Nombre de familles"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+
+# Affichage des tableaux en console (si désiré)
+resume_modalite_garde
+resume_revenu_familial
+
+# Affichage des graphiques
+plot_modalite_garde
+plot_revenu_familial
+
 
 # Distribution des scores de satisfaction envers l'intervenant
 df_smonkey_t1_socio_service_clean <- df_smonkey_t1_socio_service %>%
